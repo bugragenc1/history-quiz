@@ -53,9 +53,9 @@ if 'oyun_verisi' not in st.session_state:
 if 'aktif_soru_index' not in st.session_state:
     st.session_state.aktif_soru_index = 0
 if 'cevap_durumlari' not in st.session_state:
-    st.session_state.cevap_durumlari = ["bos"] * 10 # Her soru için: 'bos', 'dogru', 'yanlis'
+    st.session_state.cevap_durumlari = [] 
 if 'kullanici_cevaplari' not in st.session_state:
-    st.session_state.kullanici_cevaplari = [""] * 10 # Girdiği metinleri tutmak için
+    st.session_state.kullanici_cevaplari = []
 if 'secilen_zorluk' not in st.session_state:
     st.session_state.secilen_zorluk = "Karışık"
 if 'baslangic_zamani' not in st.session_state:
@@ -67,7 +67,7 @@ if 'baslangic_zamani' not in st.session_state:
 # ==========================================
 if st.session_state.ekran == "menu":
     st.title("🌍 Tarihin İzleri: Kim Bu?")
-    st.write("Zorluk seviyesi seçin. Unutmayın, **sadece 120 saniyeniz** var!")
+    st.write("Zorluk seviyesi seçin. Unutmayın, **sadece 200 saniyeniz** var!")
     
     scores = load_highscores()
     col_k, col_o, col_z, col_m = st.columns(4)
@@ -86,16 +86,15 @@ if st.session_state.ekran == "menu":
         else:
             filtrelenmis_df = orijinal_df
             
-        soru_sayisi = 10
+        soru_sayisi = min(10, len(filtrelenmis_df))
         st.session_state.oyun_verisi = filtrelenmis_df.sample(n=soru_sayisi).reset_index(drop=True)
         
-        # Oyun verilerini tamamen sıfırla
         st.session_state.aktif_soru_index = 0
-        st.session_state.cevap_durumlari = ["bos"] * 10
-        st.session_state.kullanici_cevaplari = [""] * 10
+        st.session_state.cevap_durumlari = ["bos"] * soru_sayisi
+        st.session_state.kullanici_cevaplari = [""] * soru_sayisi
         st.session_state.secilen_zorluk = zorluk_secimi
         
-        # Süreyi başlat (120 Saniye)
+        # Süreyi başlat (200 Saniye)
         st.session_state.baslangic_zamani = time.time()
         
         st.session_state.ekran = "oyun"
@@ -106,9 +105,11 @@ if st.session_state.ekran == "menu":
 # EKRAN 2: OYUN EKRANI
 # ==========================================
 elif st.session_state.ekran == "oyun":
-    # --- ZAMAN KONTROLÜ (120 Saniye) ---
+    soru_sayisi = len(st.session_state.oyun_verisi)
+    
+    # --- ZAMAN KONTROLÜ (200 Saniye) ---
     gecen_sure = time.time() - st.session_state.baslangic_zamani
-    kalan_sure = int(max(0, 120 - gecen_sure))
+    kalan_sure = int(max(0, 200 - gecen_sure))
     
     if kalan_sure <= 0:
         st.warning("⏱️ SÜRE BİTTİ!")
@@ -116,7 +117,6 @@ elif st.session_state.ekran == "oyun":
         st.session_state.ekran = "sonuc"
         st.rerun()
 
-    # Görsel, tik-tak eden sayaç (JavaScript ile)
     timer_html = f"""
     <div style="font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; color: #e74c3c; text-align: center; padding: 10px; border: 2px solid #e74c3c; border-radius: 10px; background-color: #fcebeb;">
         ⏱️ Kalan Süre: <span id="timer">{kalan_sure}</span> saniye
@@ -137,14 +137,13 @@ elif st.session_state.ekran == "oyun":
     """
     components.html(timer_html, height=70)
 
-    # --- SORU NAVİGASYON PANELİ (1'den 10'a kadar) ---
+    # --- SORU NAVİGASYON PANELİ ---
     st.write("### Soru Paneli")
-    nav_cols = st.columns(10)
+    nav_cols = st.columns(soru_sayisi)
     
-    for i in range(10):
+    for i in range(soru_sayisi):
         durum = st.session_state.cevap_durumlari[i]
         
-        # Duruma göre ikon belirle
         if durum == "dogru":
             ikon = "🟢"
         elif durum == "yanlis":
@@ -152,7 +151,6 @@ elif st.session_state.ekran == "oyun":
         else:
             ikon = "⚪"
             
-        # Eğer aktif sorudaysak vurgulu göster
         buton_metni = f"📍 {i+1}" if i == st.session_state.aktif_soru_index else f"{ikon} {i+1}"
         
         with nav_cols[i]:
@@ -167,9 +165,8 @@ elif st.session_state.ekran == "oyun":
     df = st.session_state.oyun_verisi
     mevcut_kisi = df.iloc[aktif_index]
     
-    # Skoru anlık hesapla
     anlik_skor = st.session_state.cevap_durumlari.count("dogru")
-    st.write(f"**Soru {aktif_index + 1} / 10** | ⭐ Anlık Skor: {anlik_skor}")
+    st.write(f"**Soru {aktif_index + 1} / {soru_sayisi}** | ⭐ Anlık Skor: {anlik_skor}")
 
     # --- HARİTA ÇİZİMİ ---
     dogum_enlem = mevcut_kisi['dogum_enlem']
@@ -195,7 +192,6 @@ elif st.session_state.ekran == "oyun":
     durum = st.session_state.cevap_durumlari[aktif_index]
     
     if durum == "bos":
-        # Henüz cevaplanmamışsa girdi kutusunu göster
         tahmin = st.text_input("Bu tarihi kişilik kimdir?", key=f"tahmin_input_{aktif_index}")
         
         if st.button("✔️ Cevapla", use_container_width=True):
@@ -207,7 +203,6 @@ elif st.session_state.ekran == "oyun":
             tahmin_kelimeleri = tahmin_clean.split()
             isim_kelimeleri = isim_clean.split()
             
-            # Yazım hatası toleransı
             tam_benzerlik = difflib.SequenceMatcher(None, tahmin_clean, isim_clean).ratio()
             alt_kume_dogru_mu = len(tahmin_kelimeleri) > 0 and all(
                 any(difflib.SequenceMatcher(None, t_k, i_k).ratio() >= 0.75 for i_k in isim_kelimeleri) 
@@ -219,33 +214,34 @@ elif st.session_state.ekran == "oyun":
             else:
                 st.session_state.cevap_durumlari[aktif_index] = "yanlis"
                 
-            # Kullanıcının girdiği metni kaydet
-            st.session_state.kullanici_cevaplari[aktif_index] = mevcut_kisi['isim']
-            
-            # Bir sonraki BOS soruya otomatik geçiş
-            sonraki_hedef = -1
-            for idx in range(10):
-                if st.session_state.cevap_durumlari[idx] == "bos":
-                    sonraki_hedef = idx
-                    break
-                    
-            if sonraki_hedef != -1:
-                st.session_state.aktif_soru_index = sonraki_hedef
-            else:
-                # Tüm sorular bittiyse sonuç ekranına at
-                st.session_state.ekran = "sonuc"
-                
+            # DOĞRUSU: Kullanıcının kendi girdiği kelimeyi hafızaya alıyoruz
+            st.session_state.kullanici_cevaplari[aktif_index] = tahmin
             st.rerun()
             
     else:
-        # Soru zaten cevaplanmışsa sonucu göster
+        # Soru cevaplandıktan sonra gösterilecek alan
+        kullanici_cevabi = st.session_state.kullanici_cevaplari[aktif_index]
+        
         if durum == "dogru":
-            st.success(f"🎉 Doğru Bildiniz! Cevap: {st.session_state.kullanici_cevaplari[aktif_index]}")
+            st.success(f"🎉 Doğru Bildiniz! Cevap: **{mevcut_kisi['isim']}**")
         else:
-            st.error(f"❌ Yanlış! Doğru Cevap: {st.session_state.kullanici_cevaplari[aktif_index]} olacaktı.")
+            st.error(f"❌ Yanlış! Senin Yanıtın: '{kullanici_cevabi}' | Doğru Cevap: **{mevcut_kisi['isim']}**")
+            
+        bos_kalanlar = [idx for idx, d in enumerate(st.session_state.cevap_durumlari) if d == "bos"]
+        if bos_kalanlar:
+            if st.button("Sıradaki Boş Soruya Geç ➡️", use_container_width=True):
+                sonraki_bos = min(bos_kalanlar, key=lambda x: (x - aktif_index) % soru_sayisi)
+                st.session_state.aktif_soru_index = sonraki_bos
+                st.rerun()
+        else:
+            if st.button("Tüm Sorular Tamamlandı! Sonuçları Gör 🏆", use_container_width=True):
+                save_highscore(st.session_state.secilen_zorluk, st.session_state.cevap_durumlari.count("dogru"))
+                st.session_state.ekran = "sonuc"
+                st.rerun()
             
     st.divider()
     if st.button("Oyunu Bitir ve Sonuçları Gör 🛑", type="secondary"):
+        save_highscore(st.session_state.secilen_zorluk, st.session_state.cevap_durumlari.count("dogru"))
         st.session_state.ekran = "sonuc"
         st.rerun()
 
@@ -255,24 +251,40 @@ elif st.session_state.ekran == "oyun":
 # ==========================================
 elif st.session_state.ekran == "sonuc":
     st.balloons()
-    st.title("🏆 Zaman Doldu / Oyun Bitti!")
+    st.title("🏆 Oyun Bitti!")
     
-    # Skoru hesapla
+    soru_sayisi = len(st.session_state.oyun_verisi)
     skor = st.session_state.cevap_durumlari.count("dogru")
     bos_sayisi = st.session_state.cevap_durumlari.count("bos")
     zorluk = st.session_state.secilen_zorluk
     
-    st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{zorluk} Seviye Skoru: {skor} / 10</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{zorluk} Seviye Skoru: {skor} / {soru_sayisi}</h2>", unsafe_allow_html=True)
     
     if bos_sayisi > 0:
-        st.warning(f"Zaman yetmediği için {bos_sayisi} soruyu boş bıraktınız.")
+        st.warning(f"Zaman yetmediği veya bitirdiğin için {bos_sayisi} soruyu boş bıraktın.")
     
-    # Rekor kontrolü
     scores = load_highscores()
-    if skor > scores.get(zorluk, 0) and skor > 0:
+    if skor >= scores.get(zorluk, 0) and skor > 0:
         st.success("👑 YENİ REKOR KIRDIN!")
-        save_highscore(zorluk, skor)
         
+    st.divider()
+    
+    # --- YENİ EKLENEN ÖZET BÖLÜMÜ ---
+    st.write("### 📝 Soru Özeti")
+    for i in range(soru_sayisi):
+        durum = st.session_state.cevap_durumlari[i]
+        kisi_ismi = st.session_state.oyun_verisi.iloc[i]['isim']
+        kullanici_cevabi = st.session_state.kullanici_cevaplari[i]
+        
+        if durum == "dogru":
+            st.markdown(f"**Soru {i+1}:** 🟢 Doğru (**{kisi_ismi}**)")
+        elif durum == "yanlis":
+            st.markdown(f"**Soru {i+1}:** 🔴 Yanlış (Senin Yanıtın: *'{kullanici_cevabi}'* | Doğru Cevap: **{kisi_ismi}**)")
+        else:
+            st.markdown(f"**Soru {i+1}:** ⚪ Boş (Doğru Cevap: **{kisi_ismi}**)")
+            
+    st.divider()
+
     if st.button("🔄 Ana Menüye Dön", use_container_width=True):
         st.session_state.ekran = "menu"
         st.rerun()
