@@ -1,3 +1,4 @@
+import difflib
 import streamlit as st
 import pandas as pd
 import folium
@@ -141,10 +142,28 @@ elif st.session_state.ekran == "oyun":
                 
             tahmin_clean = tr_lower(tahmin)
             isim_clean = tr_lower(mevcut_kisi['isim'])
-            tahmin_kelimeleri = set(tahmin_clean.split())
-            isim_kelimeleri = set(isim_clean.split())
             
-            if (tahmin_clean == isim_clean) or (tahmin_kelimeleri.issubset(isim_kelimeleri) and len(tahmin_kelimeleri) > 0):
+            tahmin_kelimeleri = tahmin_clean.split()
+            isim_kelimeleri = isim_clean.split()
+            
+            # 1. KONTROL: Tam Metin Benzerliği (Örn: "mahatma gandi" vs "mahatma gandhi")
+            # İki metin birbiriyle %80 veya daha fazla eşleşiyorsa kabul et.
+            tam_benzerlik = difflib.SequenceMatcher(None, tahmin_clean, isim_clean).ratio()
+            
+            # 2. KONTROL: Kelime Bazlı Alt Küme Benzerliği (Örn: Sadece "gandi" yazdıysa)
+            alt_kume_dogru_mu = True
+            if len(tahmin_kelimeleri) == 0:
+                alt_kume_dogru_mu = False
+            else:
+                for t_kelime in tahmin_kelimeleri:
+                    # Kullanıcının yazdığı her bir kelime, asıl ismin kelimelerinden herhangi birine %75 benziyor mu?
+                    kelime_eslesti = any(difflib.SequenceMatcher(None, t_kelime, i_kelime).ratio() >= 0.75 for i_kelime in isim_kelimeleri)
+                    if not kelime_eslesti:
+                        alt_kume_dogru_mu = False
+                        break
+            
+            # Eğer tam isim benzerliği %80'den büyükse VEYA girdiği kelimeler ismin parçalarına uyuyorsa:
+            if tam_benzerlik >= 0.80 or alt_kume_dogru_mu:
                 st.session_state.durum_renk = "success"
                 st.session_state.sonuc_mesaji = f"🎉 Tebrikler! Doğru cevap: {mevcut_kisi['isim']}"
                 st.session_state.skor += 1
