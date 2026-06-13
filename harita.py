@@ -10,14 +10,29 @@ import time
 
 st.set_page_config(page_title="Tarihin İzleri Quiz", layout="centered", page_icon="🌍")
 
-# --- MOBİL UYUMLULUK İÇİN CSS DOKUNUŞLARI ---
+# --- MOBİL UYUMLULUK İÇİN ÖZEL CSS (Soru Numaralarını Yan Yana Tutar) ---
 st.markdown("""
     <style>
-        /* Buton metinlerinin mobilde taşmasını engellemek için küçük bir ayar */
         @media (max-width: 768px) {
-            .stButton > button {
-                padding: 4px 8px !important;
-                font-size: 14px !important;
+            /* Sadece 5 kolonlu satırları (Soru paneli) hedefler ve yan yana inmesini yasaklar */
+            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+            }
+            /* Kolon genişliklerini tam %20 olarak ayarlar (5 tane sığması için) */
+            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) > div[data-testid="column"] {
+                width: 20% !important;
+                flex: 1 1 20% !important;
+                min-width: 18% !important;
+                padding: 0 2px !important;
+            }
+            /* Numaratör butonlarının boyutunu mobilde daha kompakt yapar */
+            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) .stButton > button {
+                padding: 0px !important;
+                font-size: 13px !important;
+                height: 40px !important;
+                min-height: 40px !important;
             }
         }
     </style>
@@ -84,7 +99,6 @@ if st.session_state.ekran == "menu":
     
     scores = load_highscores()
     
-    # Mobilde daha düzgün durması için 4'lü yerine 2x2 matris kullanıyoruz
     col_k, col_o = st.columns(2)
     col_k.metric("Rekor (Kolay)", f"{scores['Kolay']} / 10")
     col_o.metric("Rekor (Orta)", f"{scores['Orta']} / 10")
@@ -153,7 +167,7 @@ elif st.session_state.ekran == "oyun":
     """
     components.html(timer_html, height=60)
 
-    # --- SORU NAVİGASYON PANELİ (Mobilde 5-5 İki Satır Mantığı) ---
+    # --- SORU NAVİGASYON PANELİ (Mobilde bozulmayan 5x2 ızgara) ---
     st.write("### Soru Paneli")
     
     satir1 = st.columns(5)
@@ -171,7 +185,6 @@ elif st.session_state.ekran == "oyun":
             
         buton_metni = f"📍 {i+1}" if i == st.session_state.aktif_soru_index else f"{ikon} {i+1}"
         
-        # İlk 5 soruyu birinci satıra, geri kalanları ikinci satıra yerleştiriyoruz
         aktif_kolon = satir1[i] if i < 5 else satir2[i - 5]
         
         with aktif_kolon:
@@ -202,12 +215,16 @@ elif st.session_state.ekran == "oyun":
         olum_enlem -= 0.6
         olum_boylam += 0.6
 
-    m = folium.Map(location=[merkez_enlem, merkez_boylam], zoom_start=4, tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr="Esri")
+    m = folium.Map(
+        location=[merkez_enlem, merkez_boylam], 
+        zoom_start=4, 
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", 
+        attr="Esri World Imagery"
+    )
     c_style = "font-family: Arial; font-weight: bold; font-size: 14px; padding: 4px 8px; border-radius: 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); white-space: nowrap;"
     folium.Marker([dogum_enlem, dogum_boylam], icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);"><span style='font-size: 20px; margin-right: 4px;'>👶</span><span style="{c_style} color: #2ecc71; background-color: rgba(0,0,0,0.75);">{mevcut_kisi['dogum_yil']}</span></div>""")).add_to(m)
     folium.Marker([olum_enlem, olum_boylam], icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);"><span style='font-size: 20px; margin-right: 4px;'>⚰️</span><span style="{c_style} color: #e74c3c; background-color: rgba(0,0,0,0.75);">{mevcut_kisi['olum_yil']}</span></div>""")).add_to(m)
 
-    # Harita yüksekliği mobilde sığması için 330 yapıldı
     st_folium(m, height=330, use_container_width=True)
 
     # --- CEVAPLAMA MANTIĞI ---
