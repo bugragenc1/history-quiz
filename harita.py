@@ -10,34 +10,6 @@ import time
 
 st.set_page_config(page_title="Tarihin İzleri Quiz", layout="centered", page_icon="🌍")
 
-# --- MOBİL UYUMLULUK İÇİN ÖZEL CSS (Soru Numaralarını Yan Yana Tutar) ---
-st.markdown("""
-    <style>
-        @media (max-width: 768px) {
-            /* Sadece 5 kolonlu satırları (Soru paneli) hedefler ve yan yana inmesini yasaklar */
-            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-            }
-            /* Kolon genişliklerini tam %20 olarak ayarlar (5 tane sığması için) */
-            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) > div[data-testid="column"] {
-                width: 20% !important;
-                flex: 1 1 20% !important;
-                min-width: 18% !important;
-                padding: 0 2px !important;
-            }
-            /* Numaratör butonlarının boyutunu mobilde daha kompakt yapar */
-            div[data-testid="stHorizontalBlock"]:has(> div:nth-child(5)) .stButton > button {
-                padding: 0px !important;
-                font-size: 13px !important;
-                height: 40px !important;
-                min-height: 40px !important;
-            }
-        }
-    </style>
-""", unsafe_allow_html=True)
-
 # --- HIGHSCORE YÖNETİMİ ---
 SCORE_FILE = "highscores.json"
 
@@ -167,30 +139,27 @@ elif st.session_state.ekran == "oyun":
     """
     components.html(timer_html, height=60)
 
-    # --- SORU NAVİGASYON PANELİ (Mobilde bozulmayan 5x2 ızgara) ---
-    st.write("### Soru Paneli")
-    
-    satir1 = st.columns(5)
-    satir2 = st.columns(5)
-    
-    for i in range(soru_sayisi):
+    # --- COMBOBOX NAVİGASYON PANELİ ---
+    def soru_formati(i):
         durum = st.session_state.cevap_durumlari[i]
-        
         if durum == "dogru":
-            ikon = "🟢"
+            return f"🟢 Soru {i+1} (Doğru)"
         elif durum == "yanlis":
-            ikon = "🔴"
+            return f"🔴 Soru {i+1} (Yanlış)"
         else:
-            ikon = "⚪"
-            
-        buton_metni = f"📍 {i+1}" if i == st.session_state.aktif_soru_index else f"{ikon} {i+1}"
-        
-        aktif_kolon = satir1[i] if i < 5 else satir2[i - 5]
-        
-        with aktif_kolon:
-            if st.button(buton_metni, key=f"nav_btn_{i}", use_container_width=True):
-                st.session_state.aktif_soru_index = i
-                st.rerun()
+            return f"⚪ Soru {i+1} (Boş)"
+
+    secilen_soru = st.selectbox(
+        "📌 Gitmek istediğiniz soruyu seçin:",
+        options=range(soru_sayisi),
+        index=st.session_state.aktif_soru_index,
+        format_func=soru_formati
+    )
+    
+    # Eğer combobox'tan farklı bir soru seçilirse sayfayı o soruya güncelle
+    if secilen_soru != st.session_state.aktif_soru_index:
+        st.session_state.aktif_soru_index = secilen_soru
+        st.rerun()
                 
     st.divider()
 
