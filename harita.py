@@ -1,13 +1,30 @@
-import difflib
 import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import st_folium
 import os
+import difflib
+import json
 
 st.set_page_config(page_title="Tarihin İzleri Quiz", layout="centered")
 
-# --- 1. VERİYİ ÇEK (SADECE BİR KERE ÇALIŞIR) ---
+# --- HIGHSCORE (EN YÜKSEK SKOR) YÖNETİMİ ---
+SCORE_FILE = "highscores.json"
+
+def load_highscores():
+    if os.path.exists(SCORE_FILE):
+        with open(SCORE_FILE, "r") as f:
+            return json.load(f)
+    return {"Karışık": 0, "Kolay": 0, "Orta": 0, "Zor": 0}
+
+def save_highscore(zorluk, skor):
+    scores = load_highscores()
+    if skor > scores.get(zorluk, 0):
+        scores[zorluk] = skor
+        with open(SCORE_FILE, "w") as f:
+            json.dump(scores, f)
+
+# --- VERİYİ ÇEK VE HAZIRLA ---
 @st.cache_data
 def load_data():
     csv_yolu = 'veri-v2.csv' 
@@ -27,22 +44,23 @@ orijinal_df = load_data()
 if orijinal_df.empty:
     st.stop()
 
-# --- 2. HAFIZA (STATE) YÖNETİMİ ---
-# Uygulama açılışında oyun hangi ekranda olmalı? (menu, oyun, sonuc)
+# --- HAFIZA (STATE) YÖNETİMİ ---
 if 'ekran' not in st.session_state:
     st.session_state.ekran = "menu"
 if 'oyun_verisi' not in st.session_state:
     st.session_state.oyun_verisi = None
-if 'soru_index' not in st.session_state:
-    st.session_state.soru_index = 0
+if 'kalan_sorular' not in st.session_state: # Pas geçme kuyruğu
+    st.session_state.kalan_sorular = []
+if 'cozulen_soru_sayisi' not in st.session_state:
+    st.session_state.cozulen_soru_sayisi = 0
+if 'hedef_soru_sayisi' not in st.session_state:
+    st.session_state.hedef_soru_sayisi = 0
+if 'secilen_zorluk' not in st.session_state:
+    st.session_state.secilen_zorluk = "Karışık"
 if 'skor' not in st.session_state:
     st.session_state.skor = 0
 if 'cevaplandi' not in st.session_state:
     st.session_state.cevaplandi = False
-if 'sonuc_mesaji' not in st.session_state:
-    st.session_state.sonuc_mesaji = ""
-if 'durum_renk' not in st.session_state:
-    st.session_state.durum_renk = ""
 
 
 # ==========================================
@@ -50,24 +68,37 @@ if 'durum_renk' not in st.session_state:
 # ==========================================
 if st.session_state.ekran == "menu":
     st.title("🌍 Tarihin İzleri: Kim Bu?")
-    st.write("Hoş geldin! Lütfen bir zorluk seviyesi seç ve yeni oyuna başla. Her turda rastgele 10 soru sorulacaktır.")
+    st.write("Zorluk seviyesi seçin ve oyuna başlayın. Zorlandığınız soruları sona atabilirsiniz!")
+    
+    # Mevcut rekorları göster
+    scores = load_highscores()
+    col_k, col_o, col_z, col_m = st.columns(4)
+    col_k.metric("Rekor (Kolay)", f"{scores['Kolay']} / 10")
+    col_o.metric("Rekor (Orta)", f"{scores['Orta']} / 10")
+    col_z.metric("Rekor (Zor)", f"{scores['Zor']} / 10")
+    col_m.metric("Rekor (Karışık)", f"{scores['Karışık']} / 10")
+    
+    st.divider()
     
     # Zorluk Seçimi
     zorluk_secimi = st.selectbox("Zorluk Seviyesini Seçin:", ["Karışık", "Kolay", "Orta", "Zor"])
     
     if st.button("🚀 Yeni Oyun Başlat", use_container_width=True):
-        # Seçilen zorluğa göre veriyi filtrele
         if zorluk_secimi != "Karışık":
             filtrelenmis_df = orijinal_df[orijinal_df['zorluk'] == zorluk_secimi]
         else:
             filtrelenmis_df = orijinal_df
             
-        # Filtrelenen havuzdan rastgele 10 kişi seç
+        # Rastgele 10 kişi seç
         soru_sayisi = min(10, len(filtrelenmis_df))
         st.session_state.oyun_verisi = filtrelenmis_df.sample(n=soru_sayisi).reset_index(drop=True)
         
-        # Oyun verilerini sıfırla ve oyun ekranına geç
-        st.session_state.soru_index = 0
+        # Soru kuyruğunu (indexleri) oluştur
+        st.session_state.kalan_sorular = list(range(soru_sayisi))
+        st.session_state.hedef_soru_sayisi = soru_sayisi
+        st.session_state.cozulen_soru_sayisi = 0
+        st.session_state.secilen_zorluk = zorluk_secimi
+        
         st.session_state.skor = 0
         st.session_state.cevaplandi = False
         st.session_state.ekran = "oyun"
@@ -79,19 +110,19 @@ if st.session_state.ekran == "menu":
 # ==========================================
 elif st.session_state.ekran == "oyun":
     df = st.session_state.oyun_verisi
-    mevcut_kisi = df.iloc[st.session_state.soru_index]
-    toplam_soru = len(df)
+    # Kuyruğun en başındaki soruyu getir
+    aktif_index = st.session_state.kalan_sorular[0]
+    mevcut_kisi = df.iloc[aktif_index]
 
     st.title("🌍 Tarihin İzleri")
     
-    # İlerleme ve Skor Çubuğu (Örn: 5 / 10)
     col1, col2 = st.columns(2)
     with col1:
-        st.info(f"📍 **Soru:** {st.session_state.soru_index + 1} / {toplam_soru}")
+        st.info(f"📍 **İlerleme:** {st.session_state.cozulen_soru_sayisi + 1} / {st.session_state.hedef_soru_sayisi} (Kalan: {len(st.session_state.kalan_sorular)})")
     with col2:
-        st.success(f"⭐ **Skor:** {st.session_state.skor} / {toplam_soru}")
+        st.success(f"⭐ **Skor:** {st.session_state.skor}")
 
-    # --- Harita ve Koordinat Ayarları ---
+    # --- Harita Çizimi ---
     dogum_enlem = mevcut_kisi['dogum_enlem']
     dogum_boylam = mevcut_kisi['dogum_boylam']
     olum_enlem = mevcut_kisi['olum_enlem']
@@ -104,95 +135,80 @@ elif st.session_state.ekran == "oyun":
         olum_enlem -= 0.6
         olum_boylam += 0.6
 
-    m = folium.Map(
-        location=[merkez_enlem, merkez_boylam], 
-        zoom_start=4, 
-        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri World Imagery"
-    )
+    m = folium.Map(location=[merkez_enlem, merkez_boylam], zoom_start=4, tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr="Esri")
 
-    common_style = """
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: bold; font-size: 14px;
-        padding: 4px 8px; border-radius: 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); white-space: nowrap;
-    """
-    birth_style = f"{common_style} color: #2ecc71; background-color: rgba(0, 0, 0, 0.75);"
-    death_style = f"{common_style} color: #e74c3c; background-color: rgba(0, 0, 0, 0.75);"
-
-    folium.Marker(
-        [dogum_enlem, dogum_boylam],
-        icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);">
-        <span style='font-size: 20px; margin-right: 4px;'>👶</span><span style="{birth_style}">{mevcut_kisi['dogum_yil']}</span></div>""")
-    ).add_to(m)
-
-    folium.Marker(
-        [olum_enlem, olum_boylam],
-        icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);">
-        <span style='font-size: 20px; margin-right: 4px;'>⚰️</span><span style="{death_style}">{mevcut_kisi['olum_yil']}</span></div>""")
-    ).add_to(m)
+    c_style = "font-family: Arial; font-weight: bold; font-size: 14px; padding: 4px 8px; border-radius: 6px; box-shadow: 2px 2px 5px rgba(0,0,0,0.5); white-space: nowrap;"
+    folium.Marker([dogum_enlem, dogum_boylam], icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);"><span style='font-size: 20px; margin-right: 4px;'>👶</span><span style="{c_style} color: #2ecc71; background-color: rgba(0,0,0,0.75);">{mevcut_kisi['dogum_yil']}</span></div>""")).add_to(m)
+    folium.Marker([olum_enlem, olum_boylam], icon=folium.DivIcon(html=f"""<div style="display: flex; align-items: center; transform: translate(-50%, -100%);"><span style='font-size: 20px; margin-right: 4px;'>⚰️</span><span style="{c_style} color: #e74c3c; background-color: rgba(0,0,0,0.75);">{mevcut_kisi['olum_yil']}</span></div>""")).add_to(m)
 
     st_folium(m, height=450, use_container_width=True)
 
-    # --- Cevaplama Mantığı ---
+    # --- Cevaplama ve Pas Geçme Mantığı ---
     if not st.session_state.cevaplandi:
-        tahmin = st.text_input("Bu tarihi kişilik kimdir?", key=f"tahmin_input_{st.session_state.soru_index}")
+        tahmin = st.text_input("Bu tarihi kişilik kimdir?", key=f"tahmin_input_{aktif_index}")
         
-        if st.button("Cevapla"):
-            def tr_lower(text):
-                return str(text).replace('I', 'ı').replace('İ', 'i').strip().lower()
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            if st.button("✔️ Cevapla", use_container_width=True):
+                def tr_lower(text):
+                    return str(text).replace('I', 'ı').replace('İ', 'i').strip().lower()
+                    
+                tahmin_clean = tr_lower(tahmin)
+                isim_clean = tr_lower(mevcut_kisi['isim'])
+                tahmin_kelimeleri = tahmin_clean.split()
+                isim_kelimeleri = isim_clean.split()
                 
-            tahmin_clean = tr_lower(tahmin)
-            isim_clean = tr_lower(mevcut_kisi['isim'])
-            
-            tahmin_kelimeleri = tahmin_clean.split()
-            isim_kelimeleri = isim_clean.split()
-            
-            # 1. KONTROL: Tam Metin Benzerliği (Örn: "mahatma gandi" vs "mahatma gandhi")
-            # İki metin birbiriyle %80 veya daha fazla eşleşiyorsa kabul et.
-            tam_benzerlik = difflib.SequenceMatcher(None, tahmin_clean, isim_clean).ratio()
-            
-            # 2. KONTROL: Kelime Bazlı Alt Küme Benzerliği (Örn: Sadece "gandi" yazdıysa)
-            alt_kume_dogru_mu = True
-            if len(tahmin_kelimeleri) == 0:
-                alt_kume_dogru_mu = False
-            else:
-                for t_kelime in tahmin_kelimeleri:
-                    # Kullanıcının yazdığı her bir kelime, asıl ismin kelimelerinden herhangi birine %75 benziyor mu?
-                    kelime_eslesti = any(difflib.SequenceMatcher(None, t_kelime, i_kelime).ratio() >= 0.75 for i_kelime in isim_kelimeleri)
-                    if not kelime_eslesti:
-                        alt_kume_dogru_mu = False
-                        break
-            
-            # Eğer tam isim benzerliği %80'den büyükse VEYA girdiği kelimeler ismin parçalarına uyuyorsa:
-            if tam_benzerlik >= 0.80 or alt_kume_dogru_mu:
-                st.session_state.durum_renk = "success"
-                st.session_state.sonuc_mesaji = f"🎉 Tebrikler! Doğru cevap: {mevcut_kisi['isim']}"
-                st.session_state.skor += 1
-            else:
-                st.session_state.durum_renk = "error"
-                st.session_state.sonuc_mesaji = f"❌ Yanlış! Doğru cevap: {mevcut_kisi['isim']} olacaktı."
-            
-            st.session_state.cevaplandi = True
-            st.rerun()
+                # Typo (Yazım Hatası) ve Parça Kontrolü
+                tam_benzerlik = difflib.SequenceMatcher(None, tahmin_clean, isim_clean).ratio()
+                alt_kume_dogru_mu = len(tahmin_kelimeleri) > 0 and all(
+                    any(difflib.SequenceMatcher(None, t_k, i_k).ratio() >= 0.75 for i_k in isim_kelimeleri) 
+                    for t_k in tahmin_kelimeleri
+                )
+                
+                if tam_benzerlik >= 0.80 or alt_kume_dogru_mu:
+                    st.session_state.durum_renk = "success"
+                    st.session_state.sonuc_mesaji = f"🎉 Tebrikler! Doğru cevap: {mevcut_kisi['isim']}"
+                    st.session_state.skor += 1
+                else:
+                    st.session_state.durum_renk = "error"
+                    st.session_state.sonuc_mesaji = f"❌ Yanlış! Doğru cevap: {mevcut_kisi['isim']} olacaktı."
+                
+                st.session_state.cevaplandi = True
+                st.rerun()
+                
+        with c2:
+            # Sadece kuyrukta 1'den fazla soru kaldıysa pas geçilebilir
+            if len(st.session_state.kalan_sorular) > 1:
+                if st.button("⏭️ Pas Geç", use_container_width=True):
+                    # En baştaki soruyu al, kuyruğun en sonuna ekle
+                    gecilen_soru = st.session_state.kalan_sorular.pop(0)
+                    st.session_state.kalan_sorular.append(gecilen_soru)
+                    st.rerun()
 
     else:
-        # Sonucu ekrana bas
+        # Sonucu göster
         if st.session_state.durum_renk == "success":
             st.success(st.session_state.sonuc_mesaji)
         else:
             st.error(st.session_state.sonuc_mesaji)
             
-        # Sonraki Soru veya Bitiş Butonu
-        if st.session_state.soru_index < toplam_soru - 1:
+        # Eğer kuyrukta başka soru varsa "Sonraki Soru", yoksa "Sonuçları Gör"
+        if len(st.session_state.kalan_sorular) > 1:
             if st.button("Sonraki Soru ➡️", use_container_width=True):
-                st.session_state.soru_index += 1
+                st.session_state.kalan_sorular.pop(0) # Çözülen soruyu at
+                st.session_state.cozulen_soru_sayisi += 1
                 st.session_state.cevaplandi = False 
                 st.rerun()
         else:
             if st.button("Sonuçları Gör 🏆", use_container_width=True):
-                # 10 soru bittiğinde bitiş ekranına geç
+                st.session_state.kalan_sorular.pop(0)
+                st.session_state.cozulen_soru_sayisi += 1
+                
+                # Rekoru kaydet
+                save_highscore(st.session_state.secilen_zorluk, st.session_state.skor)
+                
                 st.session_state.ekran = "sonuc"
                 st.rerun()
-
 
 # ==========================================
 # EKRAN 3: BİTİŞ VE SONUÇLAR
@@ -201,20 +217,17 @@ elif st.session_state.ekran == "sonuc":
     st.balloons()
     st.title("🏆 Oyun Bitti!")
     
-    toplam_soru = len(st.session_state.oyun_verisi)
+    toplam = st.session_state.hedef_soru_sayisi
     skor = st.session_state.skor
+    zorluk = st.session_state.secilen_zorluk
     
-    # Büyük bir skor yazısı
-    st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>Toplam Skor: {skor} / {toplam_soru}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{zorluk} Seviye Skoru: {skor} / {toplam}</h2>", unsafe_allow_html=True)
     
-    # Skora göre geri bildirim
-    if skor == toplam_soru:
-        st.success("Kusursuz! Gerçek bir tarih profesörüsün.")
-    elif skor >= toplam_soru / 2:
-        st.info("Tebrikler, ortalamanın üstündesin!")
-    else:
-        st.warning("Biraz daha tarih çalışman gerekebilir.")
+    # Rekor kontrolü yapıp kullanıcıyı tebrik et
+    scores = load_highscores()
+    if skor >= scores.get(zorluk, 0) and skor > 0:
+        st.warning("👑 YENİ REKOR KIRDIN!")
         
-    if st.button("🔄 Ana Menüye Dön ve Yeni Oyun Başlat", use_container_width=True):
+    if st.button("🔄 Ana Menüye Dön", use_container_width=True):
         st.session_state.ekran = "menu"
         st.rerun()
