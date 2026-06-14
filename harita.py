@@ -371,18 +371,37 @@ elif st.session_state.ekran == "oyun_duel":
         else: st.error(f"❌ Yanlış Bildin! Doğru Cevap: **{mevcut_kisi['isim']}**")
         if room[rakip_rol + "_status"] == "waiting": st.info("⏳ Rakibinin yanıt vermesi bekleniyor...")
 
-
 # ==========================================
 # EKRAN 6: DÜELLO SKOR TABLOSU
 # ==========================================
 elif st.session_state.ekran == "sonuc_duel":
-    st.balloons(); st.title("🏆 Düello Bitti!")
+    st.title("🏆 Düello Bitti!")
     room = load_rooms().get(st.session_state.oda_kodu)
+    
     if room:
         p1_n, p1_s, p2_n, p2_s = room["p1_name"], room["p1_score"], room["p2_name"], room["p2_score"]
+        
+        # Skor tablosunu herkesin göreceği şekilde üste yaz
         st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{p1_n}: {p1_s} Puan | {p2_n}: {p2_s} Puan</h2>", unsafe_allow_html=True)
-        if p1_s > p2_s: st.success(f"👑 KAZANAN: **{p1_n}**!")
-        elif p2_s > p1_s: st.success(f"👑 KAZANAN: **{p2_n}**!")
-        else: st.info("🤝 BERABERE!")
+        
+        # Oyuncunun kendi rolüne göre skorunu ve rakibini belirle
+        rol = st.session_state.rol
+        benim_skorum = p1_s if rol == "p1" else p2_s
+        rakip_skoru  = p2_s if rol == "p1" else p1_s
+        
+        st.divider()
+        
+        # Kişiselleştirilmiş sonuç mesajları
+        if benim_skorum > rakip_skoru:
+            st.balloons()
+            st.success("👑 TEBRİKLER, KAZANDINIZ!")
+        elif benim_skorum < rakip_skoru:
+            st.error("😔 MAALESEF, KAYBETTİNİZ!")
+        else:
+            st.info("🤝 BERABERE! Gerçek bir yenişememe hikayesi.")
+            
+    st.divider()
+    
     if st.button("🔄 Ana Menüye Dön", use_container_width=True):
-        st.session_state.ekran = "menu"; st.rerun()
+        st.session_state.ekran = "menu"
+        st.rerun()
