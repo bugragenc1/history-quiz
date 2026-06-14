@@ -95,7 +95,6 @@ if st.session_state.ekran == "menu":
     st.title("🌍 Tarihin İzleri Quiz")
     st.write("Hoş geldiniz! Oynamak istediğiniz modu seçin:")
     
-    # İki modu birbirinden ayıran ana şalter
     mod = st.radio("Oyun Modu Seçin:", ["👤 Tek Oyunculu (Zamana Karşı)", "⚔️ Canlı 1v1 Düello"], horizontal=True)
     
     st.divider()
@@ -145,28 +144,35 @@ if st.session_state.ekran == "menu":
         with col_kur:
             st.write("### 🏠 Oda Kur")
             zorluk_secimi = st.selectbox("Oda Zorluğu:", ["Karışık", "Kolay", "Orta", "Zor"], key="duel_zorluk")
+            soru_sayisi_secimi = st.number_input("Soru Sayısı:", min_value=1, max_value=100, value=10, step=1, key="duel_soru")
+            
             if st.button("🚀 Oda Oluştur", use_container_width=True):
                 if not st.session_state.kullanici_adi:
                     st.error("Lütfen önce bir takma ad girin!")
                 else:
-                    kod = str(random.randint(1000, 9999))
                     filtrelenmis = orijinal_df if zorluk_secimi == "Karışık" else orijinal_df[orijinal_df['zorluk'] == zorluk_secimi]
-                    sorular_dict = filtrelenmis.sample(n=min(10, len(filtrelenmis))).to_dict(orient="records")
                     
-                    rooms = load_rooms()
-                    rooms[kod] = {
-                        "status": "waiting", "zorluk": zorluk_secimi, "sorular": sorular_dict,
-                        "current_question": 0, "q_start_time": 0,
-                        "p1_name": st.session_state.kullanici_adi, "p2_name": "",
-                        "p1_status": "waiting", "p2_status": "waiting",
-                        "p1_answer": "", "p2_answer": "",
-                        "p1_score": 0, "p2_score": 0
-                    }
-                    save_rooms(rooms)
-                    st.session_state.oda_kodu = kod
-                    st.session_state.rol = "p1"
-                    st.session_state.ekran = "bekleme_duel"
-                    st.rerun()
+                    # Veri setinde yeterli soru var mı kontrolü
+                    if len(filtrelenmis) < soru_sayisi_secimi:
+                        st.error(f"🚨 Hata: '{zorluk_secimi}' zorluk seviyesinde sadece {len(filtrelenmis)} kişi var. Lütfen soru sayısını düşürün.")
+                    else:
+                        kod = str(random.randint(1000, 9999))
+                        sorular_dict = filtrelenmis.sample(n=soru_sayisi_secimi).to_dict(orient="records")
+                        
+                        rooms = load_rooms()
+                        rooms[kod] = {
+                            "status": "waiting", "zorluk": zorluk_secimi, "sorular": sorular_dict,
+                            "current_question": 0, "q_start_time": 0,
+                            "p1_name": st.session_state.kullanici_adi, "p2_name": "",
+                            "p1_status": "waiting", "p2_status": "waiting",
+                            "p1_answer": "", "p2_answer": "",
+                            "p1_score": 0, "p2_score": 0
+                        }
+                        save_rooms(rooms)
+                        st.session_state.oda_kodu = kod
+                        st.session_state.rol = "p1"
+                        st.session_state.ekran = "bekleme_duel"
+                        st.rerun()
 
         with col_katil:
             st.write("### 🔑 Odaya Katıl")
@@ -208,7 +214,6 @@ elif st.session_state.ekran == "oyun_tek":
     <script>var timeLeft = {kalan_sure}; var timerEl = document.getElementById('timer'); var x = setInterval(function() {{ timeLeft--; if (timeLeft <= 0) {{ clearInterval(x); timerEl.parentElement.innerHTML = "⏱️ SÜRE DOLDU!"; }} else {{ timerEl.innerHTML = timeLeft; }} }}, 1000);</script>"""
     components.html(timer_html, height=60)
 
-    # Senin istediğin o harika Combobox navigasyonu
     def soru_formati(i):
         durum = st.session_state.cevap_durumlari[i]
         if durum == "dogru": return f"🟢 Soru {i+1} (Doğru)"
@@ -225,7 +230,6 @@ elif st.session_state.ekran == "oyun_tek":
     mevcut_kisi = st.session_state.oyun_verisi.iloc[aktif_index]
     st.write(f"**Soru {aktif_index + 1} / {soru_sayisi}** | ⭐ Skor: {st.session_state.cevap_durumlari.count('dogru')}")
 
-    # Harita (Aynı kaldı)
     dogum_enlem, dogum_boylam, olum_enlem, olum_boylam = mevcut_kisi['dogum_enlem'], mevcut_kisi['dogum_boylam'], mevcut_kisi['olum_enlem'], mevcut_kisi['olum_boylam']
     merkez_enlem, merkez_boylam = (dogum_enlem + olum_enlem) / 2, (dogum_boylam + olum_boylam) / 2
     if abs(dogum_enlem - olum_enlem) < 0.1 and abs(dogum_boylam - olum_boylam) < 0.1:
@@ -342,9 +346,9 @@ elif st.session_state.ekran == "oyun_duel":
 
     st.title("⚔️ Canlı Düello")
     c1, c2, c3 = st.columns(3)
-    c1.metric(f"Siz ({room[rol+'_name']})", f"{room[rol+'_score']} P")
+    c1.metric(f"Siz ({room[rol+'_name']})", f"{room[rol+'_score']} Puan")
     c2.markdown(f"<h3 style='text-align:center; color:red;'>⏱️ {kalan_sure} sn</h3>", unsafe_allow_html=True)
-    c3.metric(f"Rakip ({room[rakip_rol+'_name']})", f"{room[rakip_rol+'_score']} P")
+    c3.metric(f"Rakip ({room[rakip_rol+'_name']})", f"{room[rakip_rol+'_score']} Puan")
     
     st.write(f"**Soru {q_idx + 1} / {len(sorular)}**")
     
@@ -371,6 +375,7 @@ elif st.session_state.ekran == "oyun_duel":
         else: st.error(f"❌ Yanlış Bildin! Doğru Cevap: **{mevcut_kisi['isim']}**")
         if room[rakip_rol + "_status"] == "waiting": st.info("⏳ Rakibinin yanıt vermesi bekleniyor...")
 
+
 # ==========================================
 # EKRAN 6: DÜELLO SKOR TABLOSU
 # ==========================================
@@ -380,18 +385,13 @@ elif st.session_state.ekran == "sonuc_duel":
     
     if room:
         p1_n, p1_s, p2_n, p2_s = room["p1_name"], room["p1_score"], room["p2_name"], room["p2_score"]
-        
-        # Skor tablosunu herkesin göreceği şekilde üste yaz
         st.markdown(f"<h2 style='text-align: center; color: #4CAF50;'>{p1_n}: {p1_s} Puan | {p2_n}: {p2_s} Puan</h2>", unsafe_allow_html=True)
         
-        # Oyuncunun kendi rolüne göre skorunu ve rakibini belirle
         rol = st.session_state.rol
         benim_skorum = p1_s if rol == "p1" else p2_s
         rakip_skoru  = p2_s if rol == "p1" else p1_s
         
         st.divider()
-        
-        # Kişiselleştirilmiş sonuç mesajları
         if benim_skorum > rakip_skoru:
             st.balloons()
             st.success("👑 TEBRİKLER, KAZANDINIZ!")
@@ -401,7 +401,6 @@ elif st.session_state.ekran == "sonuc_duel":
             st.info("🤝 BERABERE! Gerçek bir yenişememe hikayesi.")
             
     st.divider()
-    
     if st.button("🔄 Ana Menüye Dön", use_container_width=True):
         st.session_state.ekran = "menu"
         st.rerun()
