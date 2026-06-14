@@ -1,4 +1,4 @@
-import streamlit st
+import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
 import pandas as pd
